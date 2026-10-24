@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Baixar PDF",
+  "version": "2.0",
+  "description": "Baixa o PDF com opções de corte personalizadas.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_title": "Baixar PDF",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
