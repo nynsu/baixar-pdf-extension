@@ -5,7 +5,8 @@
   "description": "Baixa o PDF com opções de corte personalizadas.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "action": {
     "default_title": "Baixar PDF",
@@ -16,5 +17,12 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["theme-detector.js"],
+      "run_at": "document_start"
+    }
+  ]
 }

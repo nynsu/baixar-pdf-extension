@@ -1,3 +1,26 @@
+function updateIcon(isDark) {
+  const iconPath = isDark ? "icon-dark.png" : "icon.png";
+  chrome.action.setIcon({ path: iconPath }).catch(() => {});
+  chrome.storage.local.set({ isDark }).catch(() => {});
+}
+
+function restoreIcon() {
+  chrome.storage.local.get("isDark", (data) => {
+    if (typeof data.isDark === "boolean") {
+      updateIcon(data.isDark);
+    }
+  });
+}
+
+chrome.runtime.onStartup.addListener(restoreIcon);
+chrome.runtime.onInstalled.addListener(restoreIcon);
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message && message.type === "THEME_CHANGED") {
+    updateIcon(message.isDark);
+  }
+});
+
 chrome.action.onClicked.addListener((tab) => {
   if (!tab.id) return;
 
