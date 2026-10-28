@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Baixar PDF",
-  "version": "2.1",
+  "version": "2.2.0",
   "description": "Baixa o PDF com opções de corte personalizadas.",
   "permissions": [
     "activeTab",
@@ -23,6 +23,12 @@
       "matches": ["<all_urls>"],
       "js": ["theme-detector.js"],
       "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pdf-lib.min.js"],
+      "matches": ["<all_urls>"]
     }
   ]
 }
