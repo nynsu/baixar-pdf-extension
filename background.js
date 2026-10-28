@@ -28,8 +28,77 @@ chrome.action.onClicked.addListener((tab) => {
     target: { tabId: tab.id },
     world: "MAIN",
     func: async () => {
+      // Dicionário de traduções (pt, en, es)
+      const translations = {
+        pt: {
+          appNotFound: "O objeto PDFViewerApplication não foi encontrado nesta página.",
+          title: "Exportar PDF",
+          filenameLabel: "Nome do arquivo:",
+          cropCheck: "Cortar borda da página",
+          cropSideLabel: "Lado a cortar:",
+          sides: {
+            esquerda: "Esquerda",
+            direita: "Direita",
+            topo: "Topo (Superior)",
+            baixo: "Baixo (Inferior)"
+          },
+          cropAmountLabel: "Quantidade (mm):",
+          cancelBtn: "Cancelar",
+          downloadBtn: "Baixar",
+          processing: "Processando...",
+          libError: "Erro ao carregar a biblioteca de PDF.",
+          generateError: "Erro ao gerar o arquivo: "
+        },
+        en: {
+          appNotFound: "The PDFViewerApplication object was not found on this page.",
+          title: "Export PDF",
+          filenameLabel: "File name:",
+          cropCheck: "Crop page margin",
+          cropSideLabel: "Side to crop:",
+          sides: {
+            esquerda: "Left",
+            direita: "Right",
+            topo: "Top (Upper)",
+            baixo: "Bottom (Lower)"
+          },
+          cropAmountLabel: "Amount (mm):",
+          cancelBtn: "Cancel",
+          downloadBtn: "Download",
+          processing: "Processing...",
+          libError: "Failed to load PDF library.",
+          generateError: "Error generating file: "
+        },
+        es: {
+          appNotFound: "No se encontró el objeto PDFViewerApplication en esta página.",
+          title: "Exportar PDF",
+          filenameLabel: "Nombre del archivo:",
+          cropCheck: "Recortar borde de la página",
+          cropSideLabel: "Lado a recortar:",
+          sides: {
+            esquerda: "Izquierda",
+            direita: "Derecha",
+            topo: "Superior (Arriba)",
+            baixo: "Inferior (Abajo)"
+          },
+          cropAmountLabel: "Cantidad (mm):",
+          cancelBtn: "Cancelar",
+          downloadBtn: "Descargar",
+          processing: "Procesando...",
+          libError: "Error al cargar la biblioteca de PDF.",
+          generateError: "Error al generar el archivo: "
+        }
+      };
+
+      // Detecta o idioma do navegador
+      const userLang = (navigator.language || navigator.userLanguage || "en").toLowerCase();
+      let lang = "en";
+      if (userLang.startsWith("pt")) lang = "pt";
+      else if (userLang.startsWith("es")) lang = "es";
+
+      const t = translations[lang];
+
       if (typeof PDFViewerApplication === "undefined" || !PDFViewerApplication.pdfDocument) {
-        alert("O objeto PDFViewerApplication não foi encontrado nesta página.");
+        alert(t.appNotFound);
         return;
       }
 
@@ -50,29 +119,29 @@ chrome.action.onClicked.addListener((tab) => {
             background: #ffffff; padding: 20px 24px; border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 340px; color: #333;
           ">
-            <h3 style="margin: 0 0 15px 0; font-size: 18px; color: #111;">Exportar PDF</h3>
+            <h3 style="margin: 0 0 15px 0; font-size: 18px; color: #111;">${t.title}</h3>
             
-            <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px;">Nome do arquivo:</label>
-            <input type="text" id="pdf-filename" value="NBR.pdf" style="
+            <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px;">${t.filenameLabel}</label>
+            <input type="text" id="pdf-filename" value="documento.pdf" style="
               width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc;
               border-radius: 4px; margin-bottom: 15px; font-size: 14px;
             "/>
 
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" id="pdf-crop-check" style="cursor: pointer; width: 16px; height: 16px;"/>
-              <label for="pdf-crop-check" style="font-size: 14px; cursor: pointer;">Cortar borda da página</label>
+              <label for="pdf-crop-check" style="font-size: 14px; cursor: pointer;">${t.cropCheck}</label>
             </div>
 
             <div id="pdf-crop-options" style="display: none; padding: 10px; background: #f5f5f5; border-radius: 6px; margin-bottom: 15px;">
-              <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px;">Lado a cortar:</label>
+              <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px;">${t.cropSideLabel}</label>
               <select id="pdf-crop-side" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 10px;">
-                <option value="esquerda">Esquerda</option>
-                <option value="direita">Direita</option>
-                <option value="topo">Topo (Superior)</option>
-                <option value="baixo">Baixo (Inferior)</option>
+                <option value="esquerda">${t.sides.esquerda}</option>
+                <option value="direita">${t.sides.direita}</option>
+                <option value="topo">${t.sides.topo}</option>
+                <option value="baixo">${t.sides.baixo}</option>
               </select>
 
-              <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px;">Quantidade (mm):</label>
+              <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px;">${t.cropAmountLabel}</label>
               <input type="number" id="pdf-crop-amount" value="6" min="1" step="0.5" style="
                 width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;
               "/>
@@ -81,10 +150,10 @@ chrome.action.onClicked.addListener((tab) => {
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
               <button id="pdf-cancel-btn" style="
                 padding: 8px 14px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer;
-              ">Cancelar</button>
+              ">${t.cancelBtn}</button>
               <button id="pdf-confirm-btn" style="
                 padding: 8px 14px; background: #0066cc; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
-              ">Baixar</button>
+              ">${t.downloadBtn}</button>
             </div>
           </div>
         </div>
@@ -115,7 +184,7 @@ chrome.action.onClicked.addListener((tab) => {
         const lado = document.getElementById("pdf-crop-side").value;
         const mm = parseFloat(document.getElementById("pdf-crop-amount").value) || 0;
 
-        confirmBtn.innerText = "Processando...";
+        confirmBtn.innerText = t.processing;
         confirmBtn.disabled = true;
 
         try {
@@ -125,7 +194,7 @@ chrome.action.onClicked.addListener((tab) => {
               const script = document.createElement("script");
               script.src = "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js";
               script.onload = resolve;
-              script.onerror = () => reject(new Error("Erro ao carregar a biblioteca de PDF."));
+              script.onerror = () => reject(new Error(t.libError));
               document.head.appendChild(script);
             });
           }
@@ -177,8 +246,8 @@ chrome.action.onClicked.addListener((tab) => {
 
           modal.remove();
         } catch (err) {
-          alert("Erro ao gerar o arquivo: " + err.message);
-          confirmBtn.innerText = "Baixar";
+          alert(t.generateError + err.message);
+          confirmBtn.innerText = t.downloadBtn;
           confirmBtn.disabled = false;
         }
       });
