@@ -31,15 +31,18 @@ chrome.action.onClicked.addListener((tab) => {
     world: "MAIN",
     args: [pdfLibUrl],
     func: async (localPdfLibUrl) => {
-      // Dicionário de traduções (pt, es, com fallback automático para en)
+      // Dicionário de traduções (pt, es, fallback en)
       const translations = {
         pt: {
           appNotFound: "O objeto PDFViewerApplication não foi encontrado nesta página.",
           title: "Exportar PDF",
           filenameLabel: "Nome do arquivo:",
           cropCheck: "Cortar bordas da página",
-          previewLabel: "Visualização do corte (primeira página):",
+          previewLabel: "Visualização do corte:",
           cutAreaLegend: "Área vermelha = corte",
+          loadingPreview: "Carregando página...",
+          pageSelectLabel: "Página de visualização:",
+          pageOf: "de",
           sides: {
             top: "Topo (mm):",
             bottom: "Inferior (mm):",
@@ -57,8 +60,11 @@ chrome.action.onClicked.addListener((tab) => {
           title: "Export PDF",
           filenameLabel: "File name:",
           cropCheck: "Crop page margins",
-          previewLabel: "Crop preview (first page):",
+          previewLabel: "Crop preview:",
           cutAreaLegend: "Red area = cut",
+          loadingPreview: "Loading page...",
+          pageSelectLabel: "Preview page:",
+          pageOf: "of",
           sides: {
             top: "Top (mm):",
             bottom: "Bottom (mm):",
@@ -76,8 +82,11 @@ chrome.action.onClicked.addListener((tab) => {
           title: "Exportar PDF",
           filenameLabel: "Nombre del archivo:",
           cropCheck: "Recortar márgenes de la página",
-          previewLabel: "Vista previa del recorte (primera página):",
+          previewLabel: "Vista previa del recorte:",
           cutAreaLegend: "Área roja = corte",
+          loadingPreview: "Cargando página...",
+          pageSelectLabel: "Página de vista previa:",
+          pageOf: "de",
           sides: {
             top: "Superior (mm):",
             bottom: "Inferior (mm):",
@@ -92,7 +101,7 @@ chrome.action.onClicked.addListener((tab) => {
         }
       };
 
-      // Detecta o idioma do navegador: se começar com pt ou es usa ele, qualquer outro cai no 'en'
+      // Detecta idioma com fallback para 'en'
       const userLang = (navigator.language || navigator.userLanguage || "en").toLowerCase();
       let lang = "en";
       if (userLang.startsWith("pt")) lang = "pt";
@@ -105,92 +114,131 @@ chrome.action.onClicked.addListener((tab) => {
         return;
       }
 
+      const totalPages = PDFViewerApplication.pdfDocument.numPages || 1;
+
       // Remove modal antigo se existir
       const modalAntigo = document.getElementById("pdf-downloader-modal");
       if (modalAntigo) modalAntigo.remove();
 
-      // Cria a estrutura do Modal HTML
+      // Cria a estrutura do Modal HTML ampliado (layout em 2 colunas para telas médias/grandes)
       const modal = document.createElement("div");
       modal.id = "pdf-downloader-modal";
       modal.innerHTML = `
         <div style="
           position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-          background: rgba(0, 0, 0, 0.5); z-index: 999999; display: flex;
-          align-items: center; justify-content: center; font-family: sans-serif;
-          box-sizing: border-box;
+          background: rgba(0, 0, 0, 0.6); z-index: 999999; display: flex;
+          align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          box-sizing: border-box; padding: 20px;
         ">
           <div style="
-            background: #ffffff; padding: 20px 24px; border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 380px; max-width: 90vw; color: #333;
-            box-sizing: border-box; max-height: 90vh; overflow-y: auto;
+            background: #ffffff; padding: 24px 28px; border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35); width: 850px; max-width: 96vw; color: #333;
+            box-sizing: border-box; max-height: 94vh; overflow-y: auto;
           ">
-            <h3 style="margin: 0 0 15px 0; font-size: 18px; color: #111;">${t.title}</h3>
-            
-            <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px;">${t.filenameLabel}</label>
-            <input type="text" id="pdf-filename" value="documento.pdf" style="
-              width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc;
-              border-radius: 4px; margin-bottom: 15px; font-size: 14px;
-            "/>
-
-            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="pdf-crop-check" style="cursor: pointer; width: 16px; height: 16px;"/>
-              <label for="pdf-crop-check" style="font-size: 14px; cursor: pointer; font-weight: 500;">${t.cropCheck}</label>
+            <!-- Cabeçalho -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid #f0f0f0; padding-bottom: 12px;">
+              <h3 style="margin: 0; font-size: 20px; color: #111; font-weight: 700;">${t.title}</h3>
+              <div style="font-size: 13px; color: #666; font-weight: 500;">Total: ${totalPages} páginas</div>
             </div>
 
-            <div id="pdf-crop-options" style="display: none; padding: 12px; background: #f8f9fa; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e9ecef;">
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                <div>
-                  <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #555;">${t.sides.top}</label>
-                  <input type="number" id="pdf-crop-top" value="0" min="0" step="0.5" style="width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;"/>
-                </div>
-                <div>
-                  <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #555;">${t.sides.bottom}</label>
-                  <input type="number" id="pdf-crop-bottom" value="0" min="0" step="0.5" style="width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;"/>
-                </div>
-                <div>
-                  <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #555;">${t.sides.left}</label>
-                  <input type="number" id="pdf-crop-left" value="0" min="0" step="0.5" style="width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;"/>
-                </div>
-                <div>
-                  <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #555;">${t.sides.right}</label>
-                  <input type="number" id="pdf-crop-right" value="0" min="0" step="0.5" style="width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;"/>
-                </div>
-              </div>
+            <!-- Corpo em 2 Colunas -->
+            <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start;">
+              
+              <!-- Coluna da Esquerda: Configurações e Cortes -->
+              <div style="flex: 1 1 300px; min-width: 280px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #444;">${t.filenameLabel}</label>
+                <input type="text" id="pdf-filename" value="documento.pdf" style="
+                  width: 100%; padding: 9px 12px; box-sizing: border-box; border: 1px solid #ced4da;
+                  border-radius: 6px; margin-bottom: 16px; font-size: 14px; outline: none;
+                "/>
 
-              <!-- Miniatura Interativa de Preview -->
-              <div style="border-top: 1px solid #dee2e6; padding-top: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                  <span style="font-size: 11px; font-weight: bold; color: #444;">${t.previewLabel}</span>
-                  <span style="font-size: 10px; color: #dc3545; font-weight: 600;">${t.cutAreaLegend}</span>
+                <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" id="pdf-crop-check" style="cursor: pointer; width: 18px; height: 18px; accent-color: #0066cc;"/>
+                  <label for="pdf-crop-check" style="font-size: 14px; cursor: pointer; font-weight: 600; color: #222;">${t.cropCheck}</label>
                 </div>
-                <div style="display: flex; justify-content: center; background: #e9ecef; border-radius: 4px; padding: 10px;">
-                  <div id="pdf-preview-sheet" style="
-                    position: relative; width: 140px; height: 198px; background: #ffffff;
-                    box-shadow: 0 1px 4px rgba(0,0,0,0.25); overflow: hidden; border: 1px solid #ced4da;
-                  ">
-                    <!-- Linhas indicadoras de texto para parecer folha -->
-                    <div style="position: absolute; top: 20px; left: 15px; right: 15px; height: 3px; background: #e0e0e0; border-radius: 2px;"></div>
-                    <div style="position: absolute; top: 30px; left: 15px; right: 25px; height: 3px; background: #f0f0f0; border-radius: 2px;"></div>
-                    <div style="position: absolute; top: 40px; left: 15px; right: 18px; height: 3px; background: #f0f0f0; border-radius: 2px;"></div>
-                    <div style="position: absolute; top: 50px; left: 15px; right: 30px; height: 3px; background: #f0f0f0; border-radius: 2px;"></div>
-                    
-                    <!-- Faixas de corte vermelhas -->
-                    <div id="cut-mask-top" style="position: absolute; top: 0; left: 0; right: 0; height: 0; background: rgba(220, 53, 69, 0.45); border-bottom: 1.5px dashed #dc3545; transition: height 0.1s ease; pointer-events: none;"></div>
-                    <div id="cut-mask-bottom" style="position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: rgba(220, 53, 69, 0.45); border-top: 1.5px dashed #dc3545; transition: height 0.1s ease; pointer-events: none;"></div>
-                    <div id="cut-mask-left" style="position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(220, 53, 69, 0.45); border-right: 1.5px dashed #dc3545; transition: width 0.1s ease; pointer-events: none;"></div>
-                    <div id="cut-mask-right" style="position: absolute; top: 0; bottom: 0; right: 0; width: 0; background: rgba(220, 53, 69, 0.45); border-left: 1.5px dashed #dc3545; transition: width 0.1s ease; pointer-events: none;"></div>
+
+                <div id="pdf-crop-options" style="display: none; padding: 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; margin-bottom: 16px;">
+                  <div style="font-size: 12px; font-weight: 700; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+                    Margens de Corte (mm)
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #495057;">${t.sides.top}</label>
+                      <input type="number" id="pdf-crop-top" value="0" min="0" step="0.5" style="width: 100%; padding: 7px 10px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 5px; font-size: 13px;"/>
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #495057;">${t.sides.bottom}</label>
+                      <input type="number" id="pdf-crop-bottom" value="0" min="0" step="0.5" style="width: 100%; padding: 7px 10px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 5px; font-size: 13px;"/>
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #495057;">${t.sides.left}</label>
+                      <input type="number" id="pdf-crop-left" value="0" min="0" step="0.5" style="width: 100%; padding: 7px 10px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 5px; font-size: 13px;"/>
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #495057;">${t.sides.right}</label>
+                      <input type="number" id="pdf-crop-right" value="0" min="0" step="0.5" style="width: 100%; padding: 7px 10px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 5px; font-size: 13px;"/>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-              <button id="pdf-cancel-btn" style="
-                padding: 8px 14px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
-              ">${t.cancelBtn}</button>
-              <button id="pdf-confirm-btn" style="
-                padding: 8px 14px; background: #0066cc; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;
-              ">${t.downloadBtn}</button>
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                  <button id="pdf-cancel-btn" style="
+                    flex: 1; padding: 10px 16px; background: #e9ecef; color: #333; border: 1px solid #ced4da;
+                    border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+                  ">${t.cancelBtn}</button>
+                  <button id="pdf-confirm-btn" style="
+                    flex: 1.5; padding: 10px 18px; background: #0066cc; color: #fff; border: none;
+                    border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 14px;
+                  ">${t.downloadBtn}</button>
+                </div>
+              </div>
+
+              <!-- Coluna da Direita: Área de Preview Grande com Seletor de Página -->
+              <div id="pdf-preview-column" style="display: none; flex: 1.2 1 420px; min-width: 320px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 16px; box-sizing: border-box;">
+                
+                <!-- Barra superior do Preview: Seletor de Página e Legenda -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 12px; font-weight: 600; color: #444;">${t.pageSelectLabel}</label>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <button id="pdf-prev-page" style="padding: 3px 8px; border: 1px solid #ced4da; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold;">◀</button>
+                      <input type="number" id="pdf-page-num" value="1" min="1" max="${totalPages}" style="width: 50px; text-align: center; padding: 4px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; font-weight: 600;"/>
+                      <span style="font-size: 12px; color: #666;">/ ${totalPages}</span>
+                      <button id="pdf-next-page" style="padding: 3px 8px; border: 1px solid #ced4da; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold;">▶</button>
+                    </div>
+                  </div>
+
+                  <span style="font-size: 11px; color: #dc3545; font-weight: 700; background: #ffebee; padding: 4px 8px; border-radius: 4px; border: 1px solid #ffcdd2;">
+                    ${t.cutAreaLegend}
+                  </span>
+                </div>
+
+                <!-- Contêiner Centralizado da Folha -->
+                <div style="
+                  display: flex; justify-content: center; align-items: center;
+                  background: #eaedf0; border-radius: 8px; padding: 20px 10px;
+                  min-height: 480px; position: relative; overflow: hidden;
+                ">
+                  <div id="pdf-preview-loading" style="font-size: 13px; color: #555; font-weight: 600;">
+                    ${t.loadingPreview}
+                  </div>
+
+                  <div id="pdf-preview-wrapper" style="
+                    display: none; position: relative; background: #ffffff;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.3); overflow: hidden; border: 1px solid #ced4da;
+                  ">
+                    <canvas id="pdf-preview-canvas" style="display: block;"></canvas>
+                    
+                    <!-- Faixas de corte vermelhas -->
+                    <div id="cut-mask-top" style="position: absolute; top: 0; left: 0; right: 0; height: 0; background: rgba(220, 53, 69, 0.45); border-bottom: 2px dashed #dc3545; pointer-events: none; box-sizing: border-box;"></div>
+                    <div id="cut-mask-bottom" style="position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: rgba(220, 53, 69, 0.45); border-top: 2px dashed #dc3545; pointer-events: none; box-sizing: border-box;"></div>
+                    <div id="cut-mask-left" style="position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(220, 53, 69, 0.45); border-right: 2px dashed #dc3545; pointer-events: none; box-sizing: border-box;"></div>
+                    <div id="cut-mask-right" style="position: absolute; top: 0; bottom: 0; right: 0; width: 0; background: rgba(220, 53, 69, 0.45); border-left: 2px dashed #dc3545; pointer-events: none; box-sizing: border-box;"></div>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           </div>
         </div>
@@ -201,6 +249,7 @@ chrome.action.onClicked.addListener((tab) => {
       // Elementos do modal
       const cropCheck = document.getElementById("pdf-crop-check");
       const cropOptions = document.getElementById("pdf-crop-options");
+      const previewColumn = document.getElementById("pdf-preview-column");
       const cancelBtn = document.getElementById("pdf-cancel-btn");
       const confirmBtn = document.getElementById("pdf-confirm-btn");
 
@@ -209,17 +258,84 @@ chrome.action.onClicked.addListener((tab) => {
       const inputLeft = document.getElementById("pdf-crop-left");
       const inputRight = document.getElementById("pdf-crop-right");
 
+      const previewLoading = document.getElementById("pdf-preview-loading");
+      const previewWrapper = document.getElementById("pdf-preview-wrapper");
+      const previewCanvas = document.getElementById("pdf-preview-canvas");
+
+      const pageNumInput = document.getElementById("pdf-page-num");
+      const prevPageBtn = document.getElementById("pdf-prev-page");
+      const nextPageBtn = document.getElementById("pdf-next-page");
+
       const maskTop = document.getElementById("cut-mask-top");
       const maskBottom = document.getElementById("cut-mask-bottom");
       const maskLeft = document.getElementById("cut-mask-left");
       const maskRight = document.getElementById("cut-mask-right");
 
-      // Dimensões da folha de preview em pixels (A4: 210mm x 297mm -> 140px x 198px aprox)
-      const previewWidthPx = 140;
-      const previewHeightPx = 198;
-      // Proporção mm para px no preview (210mm = 140px => ~0.666 px/mm)
-      const pxPerMmX = previewWidthPx / 210;
-      const pxPerMmY = previewHeightPx / 297;
+      let currentPageIndex = 1;
+      let pagePtWidth = 595.28;
+      let pagePtHeight = 841.89;
+      let canvasDisplayWidth = 350;
+      let canvasDisplayHeight = 495;
+      let isRendering = false;
+
+      async function renderPage(num) {
+        if (num < 1) num = 1;
+        if (num > totalPages) num = totalPages;
+        currentPageIndex = num;
+        pageNumInput.value = num;
+
+        if (isRendering) return;
+        isRendering = true;
+
+        previewLoading.style.display = "block";
+        previewLoading.innerText = t.loadingPreview;
+        previewWrapper.style.display = "none";
+
+        try {
+          const page = await PDFViewerApplication.pdfDocument.getPage(num);
+          const viewportBase = page.getViewport({ scale: 1 });
+          pagePtWidth = viewportBase.width;
+          pagePtHeight = viewportBase.height;
+
+          // Área ampliada do preview: máx 420px de largura e 560px de altura
+          const maxPreviewW = 420;
+          const maxPreviewH = 560;
+
+          // Proporção base de exibição na tela (CSS pixels)
+          const scaleRatio = Math.min(maxPreviewW / pagePtWidth, maxPreviewH / pagePtHeight);
+          canvasDisplayWidth = Math.round(pagePtWidth * scaleRatio);
+          canvasDisplayHeight = Math.round(pagePtHeight * scaleRatio);
+
+          // Fator de escala em alta definição (HiDPI / Retina): mínimo de 2x para nitidez nítida dos textos
+          const dpr = Math.max(window.devicePixelRatio || 1, 2);
+
+          // O canvas interno é renderizado em resolução ultra nítida (HiDPI)
+          const viewportHiDPI = page.getViewport({ scale: scaleRatio * dpr });
+          previewCanvas.width = Math.round(viewportHiDPI.width);
+          previewCanvas.height = Math.round(viewportHiDPI.height);
+
+          // Mas o tamanho exibido na tela é ajustado via CSS, mantendo as proporções e bordas perfeitas
+          previewCanvas.style.width = `${canvasDisplayWidth}px`;
+          previewCanvas.style.height = `${canvasDisplayHeight}px`;
+          previewWrapper.style.width = `${canvasDisplayWidth}px`;
+          previewWrapper.style.height = `${canvasDisplayHeight}px`;
+
+          const renderContext = {
+            canvasContext: previewCanvas.getContext("2d"),
+            viewport: viewportHiDPI
+          };
+
+          await page.render(renderContext).promise;
+
+          previewLoading.style.display = "none";
+          previewWrapper.style.display = "block";
+          updatePreview();
+        } catch (e) {
+          previewLoading.innerText = "Erro ao renderizar página " + num;
+        } finally {
+          isRendering = false;
+        }
+      }
 
       function updatePreview() {
         const topMm = Math.max(0, parseFloat(inputTop.value) || 0);
@@ -227,10 +343,18 @@ chrome.action.onClicked.addListener((tab) => {
         const leftMm = Math.max(0, parseFloat(inputLeft.value) || 0);
         const rightMm = Math.max(0, parseFloat(inputRight.value) || 0);
 
-        const topPx = Math.min(topMm * pxPerMmY, previewHeightPx / 2);
-        const bottomPx = Math.min(bottomMm * pxPerMmY, previewHeightPx / 2);
-        const leftPx = Math.min(leftMm * pxPerMmX, previewWidthPx / 2);
-        const rightPx = Math.min(rightMm * pxPerMmX, previewWidthPx / 2);
+        const ptTop = topMm * 2.83465;
+        const ptBottom = bottomMm * 2.83465;
+        const ptLeft = leftMm * 2.83465;
+        const ptRight = rightMm * 2.83465;
+
+        const pxPerPtX = canvasDisplayWidth / pagePtWidth;
+        const pxPerPtY = canvasDisplayHeight / pagePtHeight;
+
+        const topPx = Math.min(ptTop * pxPerPtY, canvasDisplayHeight / 2);
+        const bottomPx = Math.min(ptBottom * pxPerPtY, canvasDisplayHeight / 2);
+        const leftPx = Math.min(ptLeft * pxPerPtX, canvasDisplayWidth / 2);
+        const rightPx = Math.min(ptRight * pxPerPtX, canvasDisplayWidth / 2);
 
         maskTop.style.height = `${topPx}px`;
         maskBottom.style.height = `${bottomPx}px`;
@@ -238,14 +362,32 @@ chrome.action.onClicked.addListener((tab) => {
         maskRight.style.width = `${rightPx}px`;
       }
 
+      // Eventos de mudança nos mm de corte
       [inputTop, inputBottom, inputLeft, inputRight].forEach((input) => {
         input.addEventListener("input", updatePreview);
       });
 
+      // Seletor de Página
+      prevPageBtn.addEventListener("click", () => {
+        if (currentPageIndex > 1) renderPage(currentPageIndex - 1);
+      });
+
+      nextPageBtn.addEventListener("click", () => {
+        if (currentPageIndex < totalPages) renderPage(currentPageIndex + 1);
+      });
+
+      pageNumInput.addEventListener("change", () => {
+        let val = parseInt(pageNumInput.value, 10) || 1;
+        renderPage(val);
+      });
+
+      // Habilitar/desabilitar opções de corte e preview
       cropCheck.addEventListener("change", () => {
-        cropOptions.style.display = cropCheck.checked ? "block" : "none";
-        if (cropCheck.checked) {
-          updatePreview();
+        const isChecked = cropCheck.checked;
+        cropOptions.style.display = isChecked ? "block" : "none";
+        previewColumn.style.display = isChecked ? "block" : "none";
+        if (isChecked) {
+          renderPage(currentPageIndex);
         }
       });
 
@@ -268,7 +410,6 @@ chrome.action.onClicked.addListener((tab) => {
         confirmBtn.disabled = true;
 
         try {
-          // Garante o carregamento da biblioteca local PDFLib
           if (typeof PDFLib === "undefined") {
             await new Promise((resolve, reject) => {
               const script = document.createElement("script");
@@ -283,7 +424,6 @@ chrome.action.onClicked.addListener((tab) => {
           const temCorte = aplicarCorte && (topMm > 0 || bottomMm > 0 || leftMm > 0 || rightMm > 0);
 
           if (!temCorte) {
-            // Download sem alterações
             const blob = new Blob([rawData], { type: "application/pdf" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
@@ -291,11 +431,9 @@ chrome.action.onClicked.addListener((tab) => {
             link.click();
             URL.revokeObjectURL(link.href);
           } else {
-            // Processa o corte
             const pdfDoc = await PDFLib.PDFDocument.load(rawData);
             const pages = pdfDoc.getPages();
 
-            // 1 mm = 72 / 25.4 pontos ~= 2.83465
             const ptTop = topMm * 2.83465;
             const ptBottom = bottomMm * 2.83465;
             const ptLeft = leftMm * 2.83465;
